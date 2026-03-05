@@ -326,4 +326,52 @@ class TryoutController extends Controller
             ]
         ]);
     }
+
+
+    /* ================= UPDATE TRYOUT TARGET ================= */
+
+public function update(Request $request, $id)
+{
+    $tryout = Tryout::findOrFail($id);
+
+    $request->validate([
+        'twk_count' => 'required|integer|min:0',
+        'tiu_count' => 'required|integer|min:0',
+        'tkp_count' => 'required|integer|min:0',
+    ]);
+
+    $tryout->update([
+        'twk_target' => $request->twk_count,
+        'tiu_target' => $request->tiu_count,
+        'tkp_target' => $request->tkp_count,
+    ]);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Komposisi tryout berhasil diperbarui',
+        'data' => $tryout
+    ]);
+}
+
+public function reorder(Request $request, $id)
+{
+    $request->validate([
+        'orders' => 'required|array'
+    ]);
+
+    foreach ($request->orders as $soalId => $order) {
+
+        \DB::table('tryout_soal')
+            ->where('tryout_id', $id)
+            ->where('soal_id', $soalId)
+            ->update([
+                'urutan_soal' => $order
+            ]);
+    }
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Urutan soal berhasil diperbarui'
+    ]);
+}
 }

@@ -95,4 +95,6 @@ Route::middleware(['auth:sanctum','admin'])->group(function () {
     // Publish tryout
     Route::post('/tryouts/{id}/publish', [TryoutController::class, 'publish']);
 
+    Route::post('/tryouts/{id}/reorder', [TryoutController::class, 'reorder']);
+
 });

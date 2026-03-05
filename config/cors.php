@@ -7,8 +7,10 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'https://adminli.kuydinas.id/',
-        'https://userli.kuydinas.id/',
+        'https://adminli.kuydinas.id',
+        'https://userli.kuydinas.id',
+        'http://127.0.0.1:5173',
+
         
     ],
 

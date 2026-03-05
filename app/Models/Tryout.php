@@ -21,6 +21,8 @@ class Tryout extends Model
     public function soals()
     {
         return $this->belongsToMany(Soal::class, 'tryout_soal')
-            ->withTimestamps();
+            ->withPivot('urutan_soal')
+            ->withTimestamps()
+            ->orderBy('pivot_urutan_soal');
     }
 }
