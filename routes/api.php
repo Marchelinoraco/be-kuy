@@ -3,32 +3,53 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\SoalController;
 use App\Http\Controllers\Api\TryoutController;
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\TryoutResultController;
 use App\Http\Controllers\Api\RankingController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\User\UserAuthController;
+use App\Http\Controllers\Api\User\GoogleAuthController;
 
 /*
 |--------------------------------------------------------------------------
-| AUTH ROUTES
+| USER AUTH
 |--------------------------------------------------------------------------
 */
 
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::prefix('user')->group(function () {
 
-Route::post('/admin/login', [AuthController::class, 'login']);
-Route::post('/admin/register', [AuthController::class, 'register']);
+    Route::post('/register',[UserAuthController::class,'register']);
+    Route::post('/login',[UserAuthController::class,'login']);
 
+    Route::get('/auth/google', [GoogleAuthController::class, 'redirect']);
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
 
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::get('/me',[UserAuthController::class,'me']);
+        Route::post('/logout',[UserAuthController::class,'logout']);
+
+    });
+
+});
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC ROUTES
+| ADMIN AUTH
 |--------------------------------------------------------------------------
 */
 
+Route::prefix('admin')->group(function () {
 
+    Route::post('/login',[AuthController::class,'login']);
 
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::get('/me',[AuthController::class,'me']);
+        Route::post('/logout',[AuthController::class,'logout']);
+
+    });
+
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -36,11 +57,9 @@ Route::post('/admin/register', [AuthController::class, 'register']);
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum','user'])->group(function () {
 
    
-
-    Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::post('/tryouts/{id}/start', [TryoutController::class, 'start']);
 
@@ -84,14 +103,11 @@ Route::middleware(['auth:sanctum','admin'])
     | TRYOUT MANAGEMENT
     |--------------------------------------------------------------------------
     */
-    Route::get('/tryouts', [TryoutController::class, 'index']);
-    
-    Route::get('/tryouts/{id}', [TryoutController::class, 'show']);
-
-    Route::get('/tryouts', [TryoutController::class,'index']);      // list
-    Route::post('/tryouts', [TryoutController::class,'store']);     // create
-    Route::put('/tryouts/{id}', [TryoutController::class,'update']); // update
-    Route::delete('/tryouts/{id}', [TryoutController::class,'destroy']); // delete
+    Route::get('/tryouts', [TryoutController::class,'index']);
+    Route::get('/tryouts/{id}', [TryoutController::class,'show']);
+    Route::post('/tryouts', [TryoutController::class,'store']);
+    Route::put('/tryouts/{id}', [TryoutController::class,'update']);
+    Route::delete('/tryouts/{id}', [TryoutController::class,'destroy']);
 
 
     /*

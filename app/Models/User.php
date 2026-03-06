@@ -18,7 +18,12 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role'
+        'role',
+        'is_active',
+        'last_login',
+        'device_login',
+        'provider',
+        'provider_id'
     ];
 
     /**
@@ -37,6 +42,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -47,4 +53,10 @@ class User extends Authenticatable
     {
         return $this->role === 'admin';
     }
+
+    
+    public function devices()
+   {
+    return $this->hasMany(UserDevice::class);
+   }
 }
