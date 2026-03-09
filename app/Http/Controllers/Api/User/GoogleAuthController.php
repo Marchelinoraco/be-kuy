@@ -62,18 +62,10 @@ class GoogleAuthController extends Controller
 
         $token = $user->createToken('google_token')->plainTextToken;
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Login Google berhasil',
-            'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ],
-                'token' => $token
-            ]
-        ]);
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+        return redirect()->to(
+            $frontendUrl . '/auth/google/callback?token=' . $token
+        );
     }
 }

@@ -16,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
  ->withMiddleware(function (Middleware $middleware): void {
 
     // CORS
-    $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
+    $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
 
     // Jika belum login jangan redirect
     $middleware->redirectGuestsTo(function () {
