@@ -20,7 +20,7 @@ Route::prefix('user')->group(function () {
     Route::post('/register',[UserAuthController::class,'register']);
     Route::post('/login',[UserAuthController::class,'login']);
 
-    Route::get('/auth/google', [GoogleAuthController::class, 'redirect']);
+    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
     Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
 
     Route::middleware('auth:sanctum')->group(function () {
@@ -41,6 +41,9 @@ Route::prefix('user')->group(function () {
 Route::prefix('admin')->group(function () {
 
     Route::post('/login',[AuthController::class,'login']);
+
+    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
 
     Route::middleware('auth:sanctum')->group(function () {
 
