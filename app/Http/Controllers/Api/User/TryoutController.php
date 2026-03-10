@@ -41,7 +41,7 @@ class TryoutController extends Controller
                     'questionCount' => $questionCount,
 
                     'level' => 'Menengah',
-                    'seatsLeft' => 999,
+                    'seatsLeft' => $tryout->quota ?? 0,
 
                     'highlight' => $tryout->type === 'free',
                     'tag' => $tryout->type,
