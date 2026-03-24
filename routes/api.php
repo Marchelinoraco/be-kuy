@@ -18,162 +18,164 @@ use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
 
 Route::get('/ping', function () {
     return response()->json([
-        'status' => true,
-        'message' => 'API connected',
+    'status' => true,
+    'message' => 'API connected',
     ]);
 });
 
 /*
-|--------------------------------------------------------------------------
-| USER AUTH
-|--------------------------------------------------------------------------
-*/
+ |--------------------------------------------------------------------------
+ | USER AUTH
+ |--------------------------------------------------------------------------
+ */
 
 
 
 Route::prefix('user')->group(function () {
 
-    Route::post('/register',[UserAuthController::class,'register']);
-    Route::post('/login',[UserAuthController::class,'login']);
+    Route::post('/register', [UserAuthController::class , 'register']);
+    Route::post('/login', [UserAuthController::class , 'login']);
 
-    Route::get('/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'user');
-    Route::get('/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'user');
-    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'user');
-    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'user');
+    Route::get('/google/redirect', [GoogleAuthController::class , 'redirect'])->defaults('scope', 'user');
+    Route::get('/google/callback', [GoogleAuthController::class , 'callback'])->defaults('scope', 'user');
+    Route::get('/auth/google/redirect', [GoogleAuthController::class , 'redirect'])->defaults('scope', 'user');
+    Route::get('/auth/google/callback', [GoogleAuthController::class , 'callback'])->defaults('scope', 'user');
 
     Route::middleware('auth:sanctum')->group(function () {
 
-        Route::get('/me',[UserAuthController::class,'me']);
-        Route::post('/logout',[UserAuthController::class,'logout']);
+            Route::get('/me', [UserAuthController::class , 'me']);
+            Route::post('/logout', [UserAuthController::class , 'logout']);
+
+        }
+        );
 
     });
 
-});
-
 /*
-|--------------------------------------------------------------------------
-| ADMIN AUTH
-|--------------------------------------------------------------------------
-*/
+ |--------------------------------------------------------------------------
+ | ADMIN AUTH
+ |--------------------------------------------------------------------------
+ */
 
 Route::prefix('admin')->group(function () {
 
-    Route::post('/login',[AuthController::class,'login']);
+    Route::post('/login', [AuthController::class , 'login']);
 
-    Route::get('/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'admin');
-    Route::get('/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'admin');
-    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'admin');
-    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'admin');
+    Route::get('/google/redirect', [GoogleAuthController::class , 'redirect'])->defaults('scope', 'admin');
+    Route::get('/google/callback', [GoogleAuthController::class , 'callback'])->defaults('scope', 'admin');
+    Route::get('/auth/google/redirect', [GoogleAuthController::class , 'redirect'])->defaults('scope', 'admin');
+    Route::get('/auth/google/callback', [GoogleAuthController::class , 'callback'])->defaults('scope', 'admin');
 
     Route::middleware('auth:sanctum')->group(function () {
 
-        Route::get('/me',[AuthController::class,'me']);
-        Route::post('/logout',[AuthController::class,'logout']);
+            Route::get('/me', [AuthController::class , 'me']);
+            Route::post('/logout', [AuthController::class , 'logout']);
+
+        }
+        );
 
     });
 
-});
-
 /*
-|--------------------------------------------------------------------------
-| USER ROUTES
-|--------------------------------------------------------------------------
-*/
+ |--------------------------------------------------------------------------
+ | USER ROUTES
+ |--------------------------------------------------------------------------
+ */
 
-Route::middleware(['auth:sanctum','user'])->group(function () {
+Route::middleware(['auth:sanctum', 'user'])->group(function () {
 
-    Route::get('/tryouts', [UserTryoutController::class,'index']);
-    
-    Route::get('/tryouts/{id}', [UserTryoutController::class,'show']);
+    Route::get('/tryouts', [UserTryoutController::class , 'index']);
 
-    Route::post('/tryouts/{id}/register', [TryoutRegistrationController::class, 'register']);
+    Route::get('/tryouts/{id}', [UserTryoutController::class , 'show']);
 
-    Route::post('/tryouts/{id}/start', [TryoutController::class, 'start']);
+    Route::post('/tryouts/{id}/register', [TryoutRegistrationController::class , 'register']);
 
-    Route::post('/tryouts/{id}/autosave', [TryoutController::class, 'autosave']);
+    Route::post('/tryouts/{id}/start', [TryoutController::class , 'start']);
 
-    Route::post('/tryouts/{id}/submit', [TryoutController::class, 'submit']);
+    Route::post('/tryouts/{id}/autosave', [TryoutController::class , 'autosave']);
 
-    Route::get('/tryouts/{id}/remaining-time', [TryoutController::class, 'remainingTime']);
+    Route::post('/tryouts/{id}/submit', [TryoutController::class , 'submit']);
 
-    Route::get('/tryouts/{id}/result', [TryoutResultController::class, 'show']);
+    Route::get('/tryouts/{id}/remaining-time', [TryoutController::class , 'remainingTime']);
 
-    Route::get('/history', [TryoutRegistrationController::class, 'history']);
+    Route::get('/tryouts/{id}/result', [TryoutResultController::class , 'show']);
 
-    Route::get('/wallet', [WalletController::class, 'index']);
+    Route::get('/history', [TryoutRegistrationController::class , 'history']);
 
-    Route::get('/wallet/topup-packages', [WalletController::class, 'topupPackages']);
+    Route::get('/wallet', [WalletController::class , 'index']);
 
-    Route::post('/wallet/topup/create', [WalletController::class, 'createTopup']);
+    Route::get('/wallet/topup-packages', [WalletController::class , 'topupPackages']);
 
-    Route::get('/wallet/topup/{id}', [WalletController::class, 'showTopup']);
+    Route::post('/wallet/topup/create', [WalletController::class , 'createTopup']);
 
-    Route::post('/wallet/topup/{id}/sync', [WalletController::class, 'syncTopup']);
+    Route::get('/wallet/topup/{id}', [WalletController::class , 'showTopup']);
 
-    Route::get('/wallet/redeemable-tryouts', [WalletController::class, 'redeemableTryouts']);
+    Route::post('/wallet/topup/{id}/sync', [WalletController::class , 'syncTopup']);
 
-    Route::post('/wallet/redeem-tryout/{id}', [WalletController::class, 'redeemTryout']);
-    
+    Route::get('/wallet/redeemable-tryouts', [WalletController::class , 'redeemableTryouts']);
 
-    Route::get('/tryouts/{id}/ranking', [RankingController::class, 'index']);
+    Route::post('/wallet/redeem-tryout/{id}', [WalletController::class , 'redeemTryout']);
 
-    Route::get('/tryouts/{id}/my-rank', [RankingController::class, 'myRank']);
+
+    Route::get('/tryouts/{id}/ranking', [RankingController::class , 'index']);
+
+    Route::get('/tryouts/{id}/my-rank', [RankingController::class , 'myRank']);
 
 });
 
-Route::post('/payments/midtrans/webhook', [PaymentController::class, 'midtransWebhook']);
+Route::post('/payments/midtrans/webhook', [PaymentController::class , 'midtransWebhook']);
 
 
 /*
-|--------------------------------------------------------------------------
-| ADMIN ROUTES
-|--------------------------------------------------------------------------
-*/
+ |--------------------------------------------------------------------------
+ | ADMIN ROUTES
+ |--------------------------------------------------------------------------
+ */
 
-Route::middleware(['auth:sanctum','admin'])
-->prefix('admin')
-->group(function () {
+Route::middleware(['auth:sanctum', 'admin'])
+    ->prefix('admin')
+    ->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | SOAL MANAGEMENT
-    |--------------------------------------------------------------------------
-    */
+        /*
+     |--------------------------------------------------------------------------
+     | SOAL MANAGEMENT
+     |--------------------------------------------------------------------------
+     */
 
-    Route::apiResource('/soal', SoalController::class);
+        Route::apiResource('/soal', SoalController::class);
 
-    Route::apiResource('/topup-packages', TopupPackageController::class);
+        Route::apiResource('/topup-packages', TopupPackageController::class);
 
-    Route::get('/users/active-count', [AdminUserController::class, 'activeCount']);
-    Route::get('/users/count', [AdminUserController::class, 'totalCount']);
-    Route::get('/topup-transactions/summary', [AdminTopupTransactionController::class, 'summary']);
-    Route::get('/users', [AdminUserController::class, 'index']);
-    Route::patch('/users/{id}', [AdminUserController::class, 'update']);
+        Route::get('/users/active-count', [AdminUserController::class , 'activeCount']);
+        Route::get('/users/count', [AdminUserController::class , 'totalCount']);
+        Route::get('/topup-transactions/summary', [AdminTopupTransactionController::class , 'summary']);
+        Route::get('/users', [AdminUserController::class , 'index']);
+        Route::patch('/users/{id}', [AdminUserController::class , 'update']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | TRYOUT MANAGEMENT
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/tryouts', [TryoutController::class,'index']);
-    Route::get('/tryouts/{id}', [TryoutController::class,'show']);
-    Route::post('/tryouts', [TryoutController::class,'store']);
-    Route::put('/tryouts/{id}', [TryoutController::class,'update']);
-    Route::delete('/tryouts/{id}', [TryoutController::class,'destroy']);
+        /*
+     |--------------------------------------------------------------------------
+     | TRYOUT MANAGEMENT
+     |--------------------------------------------------------------------------
+     */
+        Route::get('/tryouts', [TryoutController::class , 'index']);
+        Route::get('/tryouts/{id}', [TryoutController::class , 'show']);
+        Route::post('/tryouts', [TryoutController::class , 'store']);
+        Route::put('/tryouts/{id}', [TryoutController::class , 'update']);
+        Route::delete('/tryouts/{id}', [TryoutController::class , 'destroy']);
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | TRYOUT SOAL MANAGEMENT
-    |--------------------------------------------------------------------------
-    */
+        /*
+     |--------------------------------------------------------------------------
+     | TRYOUT SOAL MANAGEMENT
+     |--------------------------------------------------------------------------
+     */
 
-    Route::post('/tryouts/{id}/attach', [TryoutController::class, 'attachSoal']);
+        Route::post('/tryouts/{id}/attach', [TryoutController::class , 'attachSoal']);
 
-    Route::delete('/tryouts/{id}/detach/{soalId}', [TryoutController::class, 'detachSoal']);
+        Route::delete('/tryouts/{id}/detach/{soalId}', [TryoutController::class , 'detachSoal']);
 
-    Route::put('/tryouts/{id}/reorder', [TryoutController::class, 'reorder']);
+        Route::put('/tryouts/{id}/reorder', [TryoutController::class , 'reorder']);
 
-    Route::post('/tryouts/{id}/publish', [TryoutController::class, 'publish']);
+        Route::post('/tryouts/{id}/publish', [TryoutController::class , 'publish']);
 
-});
+    });
