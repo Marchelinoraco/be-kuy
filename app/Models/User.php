@@ -24,7 +24,8 @@ class User extends Authenticatable
         'last_login',
         'device_login',
         'provider',
-        'provider_id'
+        'provider_id',
+        'image',
     ];
 
     /**

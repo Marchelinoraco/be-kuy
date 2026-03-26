@@ -35,12 +35,7 @@ class UserAuthController extends Controller
             'status' => true,
             'message' => 'Register berhasil',
             'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ],
+                'user' => $this->serializeUser($user),
                 'token' => $token
             ]
         ], 201);
@@ -115,12 +110,7 @@ class UserAuthController extends Controller
             'status' => true,
             'message' => 'Login user berhasil',
             'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ],
+                'user' => $this->serializeUser($user),
                 'token' => $token
             ]
         ]);
@@ -209,6 +199,7 @@ class UserAuthController extends Controller
             'coin_balance' => (int) ($user->coin_balance ?? 0),
             'last_login' => optional($user->last_login)->toDateTimeString(),
             'provider' => $user->provider,
+            'image' => $user->image,
         ];
     }
 }

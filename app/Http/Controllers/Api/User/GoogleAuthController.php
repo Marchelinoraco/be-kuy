@@ -75,6 +75,7 @@ class GoogleAuthController extends Controller
         $user->name = $googleUser->getName() ?: $user->name ?: $googleUser->getEmail();
         $user->provider = 'google';
         $user->provider_id = $googleUser->getId();
+        $user->image = $this->resolveGoogleAvatarUrl($googleUser) ?: $user->image;
         $user->is_active = $isActive;
         $user->save();
 
@@ -191,6 +192,7 @@ class GoogleAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'image' => $user->image,
             ]),
         ]);
 
@@ -225,5 +227,24 @@ class GoogleAuthController extends Controller
         $decoded = json_decode(base64_decode($state), true);
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    private function resolveGoogleAvatarUrl($googleUser): ?string
+    {
+        $avatar = $googleUser?->getAvatar();
+
+        if (is_string($avatar) && $avatar !== '') {
+            return $avatar;
+        }
+
+        $rawUser = data_get($googleUser, 'user');
+
+        if (is_array($rawUser)) {
+            $picture = (string) ($rawUser['picture'] ?? $rawUser['avatar'] ?? '');
+
+            return $picture !== '' ? $picture : null;
+        }
+
+        return null;
     }
 }
