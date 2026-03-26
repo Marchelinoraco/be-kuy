@@ -14,16 +14,23 @@ class TryoutResultController extends Controller
     public function show(Request $request, $tryoutId)
     {
         $user = $request->user();
+        $requestedAttempt = max((int) $request->integer('attempt', 0), 0);
 
-        $result = TryoutResult::with([
+        $resultQuery = TryoutResult::with([
             'tryout.soals' => function ($query) {
                 $this->applyTryoutQuestionOrdering($query);
             },
         ])
             ->forUserTryout($user->id, $tryoutId)
-            ->completed()
-            ->latestAttempt()
-            ->first();
+            ->completed();
+
+        if ($requestedAttempt > 0) {
+            $resultQuery->where('attempt_number', $requestedAttempt);
+        } else {
+            $resultQuery->latestAttempt();
+        }
+
+        $result = $resultQuery->first();
 
         if (!$result || !$result->tryout) {
             return response()->json([
@@ -37,76 +44,26 @@ class TryoutResultController extends Controller
             ->first();
 
         $tryout = $result->tryout;
-        $answers = $this->normalizeAnswers($result->answers ?? []);
-        $categoryScores = [
-            'TWK' => 0,
-            'TIU' => 0,
-            'TKP' => 0,
-        ];
-
-        $questions = $tryout->soals->values()->map(function ($soal, $index) use ($answers, &$categoryScores) {
-            $userAnswer = $answers[$soal->id] ?? $answers[(string) $soal->id] ?? null;
-            $options = $this->normalizeOptions($soal->options ?? []);
-            $category = $this->normalizeCategory($soal->category);
-
-            $status = 'unanswered';
-            $questionScore = 0;
-            $correctAnswer = strtoupper((string) ($soal->correct_answer ?? ''));
-
-            if ($category === 'TKP') {
-                $selectedOption = collect($options)->firstWhere('key', $userAnswer);
-                $bestOption = collect($options)
-                    ->sortByDesc(fn($option) => (int) ($option['score'] ?? 0))
-                    ->first();
-
-                $bestScore = (int) ($bestOption['score'] ?? 0);
-                $questionScore = (int) ($selectedOption['score'] ?? 0);
-                $correctAnswer = $bestOption['key'] ?? null;
-
-                if ($userAnswer) {
-                    $status = $questionScore === $bestScore ? 'correct' : 'wrong';
-                }
-
-                $categoryScores['TKP'] += $questionScore;
-            } else {
-                if ($userAnswer) {
-                    $status = $userAnswer === $correctAnswer ? 'correct' : 'wrong';
-                }
-
-                if ($status === 'correct') {
-                    $questionScore = 5;
-                    $categoryScores[$category] += 5;
-                }
-            }
-
-            return [
-                'id' => $soal->id,
-                'number' => $index + 1,
-                'category' => $category,
-                'question' => $soal->question,
-                'options' => $options,
-                'correct_answer' => $correctAnswer ?: null,
-                'user_answer' => $userAnswer,
-                'explanation' => $soal->explanation,
-                'score' => $questionScore,
-                'status' => $status,
-            ];
-        })->all();
+        $attemptData = $this->buildAttemptDetails($result, $tryout);
+        $answers = $attemptData['answers'];
+        $questions = $attemptData['questions'];
+        $categoryScores = $attemptData['category_scores'];
+        $answerStats = $attemptData['answer_stats'];
 
         $score = (int) ($result->score ?? 0);
         $rank = $this->resolveRank($tryoutId, $score, $user->id);
 
         $finishedAt = $registration?->finished_at;
-        $computedTotalScore = $categoryScores['TWK'] + $categoryScores['TIU'] + $categoryScores['TKP'];
-        $passed = $categoryScores['TWK'] >= (int) ($tryout->twk_pg ?? 0)
-            && $categoryScores['TIU'] >= (int) ($tryout->tiu_pg ?? 0)
-            && $categoryScores['TKP'] >= (int) ($tryout->tkp_pg ?? 0);
+        $computedTotalScore = $attemptData['total_score'];
+        $passed = $attemptData['passed'];
 
         $attemptHistory = TryoutResult::forUserTryout($user->id, $tryoutId)
             ->completed()
-            ->latestAttempt()
+            ->orderBy('attempt_number')
             ->get()
-            ->map(function (TryoutResult $attempt) {
+            ->map(function (TryoutResult $attempt) use ($tryout, $result) {
+                $metrics = $this->buildAttemptDetails($attempt, $tryout);
+
                 return [
                     'id' => $attempt->id,
                     'attempt_number' => (int) ($attempt->attempt_number ?? 1),
@@ -114,6 +71,17 @@ class TryoutResultController extends Controller
                     'correct_answer' => (int) ($attempt->correct_answer ?? 0),
                     'started_at' => optional($attempt->started_at)->toDateTimeString(),
                     'finished_at' => optional($attempt->finished_at)->toDateTimeString(),
+                    'is_selected' => $attempt->id === $result->id,
+                    'summary' => [
+                        'twk' => $metrics['category_scores']['TWK'],
+                        'tiu' => $metrics['category_scores']['TIU'],
+                        'tkp' => $metrics['category_scores']['TKP'],
+                        'total_score' => $metrics['total_score'],
+                        'passed' => $metrics['passed'],
+                        'correct' => $metrics['answer_stats']['correct'],
+                        'wrong' => $metrics['answer_stats']['wrong'],
+                        'unanswered' => $metrics['answer_stats']['unanswered'],
+                    ],
                 ];
             })
             ->values()
@@ -141,7 +109,7 @@ class TryoutResultController extends Controller
                 ],
                 'summary' => [
                     'tryout_name' => $tryout->title,
-                    'date' => optional($finishedAt ?? $result->started_at)->toDateTimeString(),
+                    'date' => optional($result->finished_at ?? $finishedAt ?? $result->started_at)->toDateTimeString(),
                     'duration' => (int) ($tryout->duration ?? 0),
                     'question_count' => count($questions),
                     'twk' => $categoryScores['TWK'],
@@ -149,6 +117,9 @@ class TryoutResultController extends Controller
                     'tkp' => $categoryScores['TKP'],
                     'total_score' => $computedTotalScore,
                     'passed' => $passed,
+                    'correct' => $answerStats['correct'],
+                    'wrong' => $answerStats['wrong'],
+                    'unanswered' => $answerStats['unanswered'],
                 ],
                 'attempt_history' => $attemptHistory,
                 'questions' => $questions,
@@ -211,6 +182,86 @@ class TryoutResultController extends Controller
         return in_array($normalized, ['TWK', 'TIU', 'TKP'], true)
             ? $normalized
             : ($normalized !== '' ? $normalized : '-');
+    }
+
+    private function buildAttemptDetails(TryoutResult $result, $tryout): array
+    {
+        $answers = $this->normalizeAnswers($result->answers ?? []);
+        $categoryScores = [
+            'TWK' => 0,
+            'TIU' => 0,
+            'TKP' => 0,
+        ];
+        $answerStats = [
+            'correct' => 0,
+            'wrong' => 0,
+            'unanswered' => 0,
+        ];
+
+        $questions = $tryout->soals->values()->map(function ($soal, $index) use ($answers, &$categoryScores, &$answerStats) {
+            $userAnswer = $answers[$soal->id] ?? $answers[(string) $soal->id] ?? null;
+            $options = $this->normalizeOptions($soal->options ?? []);
+            $category = $this->normalizeCategory($soal->category);
+
+            $status = 'unanswered';
+            $questionScore = 0;
+            $correctAnswer = strtoupper((string) ($soal->correct_answer ?? ''));
+
+            if ($category === 'TKP') {
+                $selectedOption = collect($options)->firstWhere('key', $userAnswer);
+                $bestOption = collect($options)
+                    ->sortByDesc(fn($option) => (int) ($option['score'] ?? 0))
+                    ->first();
+
+                $bestScore = (int) ($bestOption['score'] ?? 0);
+                $questionScore = (int) ($selectedOption['score'] ?? 0);
+                $correctAnswer = $bestOption['key'] ?? null;
+
+                if ($userAnswer) {
+                    $status = $questionScore === $bestScore ? 'correct' : 'wrong';
+                }
+
+                $categoryScores['TKP'] += $questionScore;
+            } else {
+                if ($userAnswer) {
+                    $status = $userAnswer === $correctAnswer ? 'correct' : 'wrong';
+                }
+
+                if ($status === 'correct') {
+                    $questionScore = 5;
+                    $categoryScores[$category] += 5;
+                }
+            }
+
+            $answerStats[$status] += 1;
+
+            return [
+                'id' => $soal->id,
+                'number' => $index + 1,
+                'category' => $category,
+                'question' => $soal->question,
+                'options' => $options,
+                'correct_answer' => $correctAnswer ?: null,
+                'user_answer' => $userAnswer,
+                'explanation' => $soal->explanation,
+                'score' => $questionScore,
+                'status' => $status,
+            ];
+        })->all();
+
+        $totalScore = $categoryScores['TWK'] + $categoryScores['TIU'] + $categoryScores['TKP'];
+        $passed = $categoryScores['TWK'] >= (int) ($tryout->twk_pg ?? 0)
+            && $categoryScores['TIU'] >= (int) ($tryout->tiu_pg ?? 0)
+            && $categoryScores['TKP'] >= (int) ($tryout->tkp_pg ?? 0);
+
+        return [
+            'answers' => $answers,
+            'questions' => $questions,
+            'category_scores' => $categoryScores,
+            'answer_stats' => $answerStats,
+            'total_score' => $totalScore,
+            'passed' => $passed,
+        ];
     }
 
     private function sessionStateForResponse(?TryoutResult $result): array
