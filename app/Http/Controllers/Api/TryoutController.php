@@ -244,23 +244,18 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        $session = TryoutResult::firstOrCreate(
-            [
-                'user_id' => $user->id,
-                'tryout_id' => $tryout->id,
-            ],
-            $this->sessionCreateDefaults()
-        );
+        $session = $this->resolveSessionForStart($user->id, $tryout->id);
 
         if ($this->hasSessionStateColumn() && empty($session->session_state)) {
             $session->session_state = $this->defaultSessionState();
             $session->save();
         }
 
-        if ($registration->status === 'registered') {
+        if (in_array($registration->status, ['registered', 'completed'], true)) {
             $registration->update([
                 'status' => 'started',
                 'started_at' => $session->started_at ?? Carbon::now(),
+                'finished_at' => null,
             ]);
             $registration->refresh();
         } elseif (!$registration->started_at && $session->started_at) {
@@ -282,6 +277,7 @@ class TryoutController extends Controller
                 'end_time' => $endTime->toDateTimeString(),
                 'registration_status' => $registration->status,
                 'finished_at' => optional($registration->finished_at)->toDateTimeString(),
+                'attempt_number' => (int) ($session->attempt_number ?? 1),
                 'answers' => $session->answers ?? [],
                 'session_state' => $this->sessionStateForResponse($session),
                 'questions' => $tryout->soals,
@@ -321,13 +317,8 @@ class TryoutController extends Controller
             'session_state.last_interaction.at' => 'nullable|date',
         ]);
 
-        $session = TryoutResult::firstOrCreate(
-            [
-                'user_id' => $user->id,
-                'tryout_id' => $tryout->id,
-            ],
-            $this->sessionCreateDefaults()
-        );
+        $session = $this->latestInProgressSession($user->id, $tryout->id)
+            ?? $this->resolveSessionForStart($user->id, $tryout->id);
 
         $answers = $this->normalizeAnswers($validated['answers'] ?? ($session->answers ?? []));
         $sessionState = $this->normalizeSessionState(
@@ -340,10 +331,11 @@ class TryoutController extends Controller
             'started_at' => $session->started_at ?? Carbon::now(),
         ]));
 
-        if ($registration->status === 'registered') {
+        if (in_array($registration->status, ['registered', 'completed'], true)) {
             $registration->update([
                 'status' => 'started',
                 'started_at' => $session->started_at ?? Carbon::now(),
+                'finished_at' => null,
             ]);
         } elseif (!$registration->started_at && $session->started_at) {
             $registration->update([
@@ -367,9 +359,7 @@ class TryoutController extends Controller
         $user = $request->user();
         $tryout = Tryout::findOrFail($id);
 
-        $result = TryoutResult::where('user_id', $user->id)
-            ->where('tryout_id', $tryout->id)
-            ->first();
+        $result = $this->latestInProgressSession($user->id, $tryout->id);
 
         if (!$result || !$result->started_at) {
             return response()->json([
@@ -481,13 +471,8 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        $session = TryoutResult::firstOrCreate(
-            [
-                'user_id' => $user->id,
-                'tryout_id' => $tryout->id,
-            ],
-            $this->sessionCreateDefaults()
-        );
+        $session = $this->latestInProgressSession($user->id, $tryout->id)
+            ?? $this->resolveSessionForStart($user->id, $tryout->id);
 
         $sessionState = $this->normalizeSessionState(
             $request->input('session_state', $this->hasSessionStateColumn() ? ($session->session_state ?? []) : [])
@@ -495,11 +480,13 @@ class TryoutController extends Controller
         $sessionState['submitted_at'] = $finishedAt->toDateTimeString();
 
         $session->update($this->sessionWriteAttributes([
+            'status' => 'completed',
             'score' => $score,
             'correct_answer' => $correctAnswer,
             'answers' => $answers,
             'session_state' => $sessionState,
             'started_at' => $session->started_at ?? Carbon::now(),
+            'finished_at' => $finishedAt,
         ]));
 
         $registration->update([
@@ -510,9 +497,7 @@ class TryoutController extends Controller
 
         Cache::forget("ranking_tryout_{$id}");
 
-        $rank = TryoutResult::where('tryout_id', $tryout->id)
-            ->where('score', '>', $score)
-            ->count() + 1;
+        $rank = $this->resolveRank($tryout->id, $score, $user->id);
 
         return response()->json([
             'status' => true,
@@ -524,6 +509,7 @@ class TryoutController extends Controller
                 'answers' => $answers,
                 'session_state' => $sessionState,
                 'finished_at' => $finishedAt->toDateTimeString(),
+                'attempt_number' => (int) ($session->attempt_number ?? 1),
             ]
         ]);
     }
@@ -630,6 +616,18 @@ class TryoutController extends Controller
             'started_at' => Carbon::now(),
         ];
 
+        if (TryoutResult::hasAttemptNumberColumn()) {
+            $defaults['attempt_number'] = 1;
+        }
+
+        if (TryoutResult::hasStatusColumn()) {
+            $defaults['status'] = 'in_progress';
+        }
+
+        if (TryoutResult::hasFinishedAtColumn()) {
+            $defaults['finished_at'] = null;
+        }
+
         if ($this->hasSessionStateColumn()) {
             $defaults['session_state'] = $this->defaultSessionState();
         }
@@ -643,7 +641,103 @@ class TryoutController extends Controller
             unset($attributes['session_state']);
         }
 
+        if (!TryoutResult::hasAttemptNumberColumn()) {
+            unset($attributes['attempt_number']);
+        }
+
+        if (!TryoutResult::hasStatusColumn()) {
+            unset($attributes['status']);
+        }
+
+        if (!TryoutResult::hasFinishedAtColumn()) {
+            unset($attributes['finished_at']);
+        }
+
         return $attributes;
+    }
+
+    private function latestSession(int $userId, int $tryoutId): ?TryoutResult
+    {
+        return TryoutResult::forUserTryout($userId, $tryoutId)
+            ->latestAttempt()
+            ->first();
+    }
+
+    private function latestInProgressSession(int $userId, int $tryoutId): ?TryoutResult
+    {
+        return TryoutResult::forUserTryout($userId, $tryoutId)
+            ->inProgress()
+            ->latestAttempt()
+            ->first();
+    }
+
+    private function createNewSession(int $userId, int $tryoutId): TryoutResult
+    {
+        if (!TryoutResult::hasAttemptNumberColumn()) {
+            return TryoutResult::firstOrCreate(
+                [
+                    'user_id' => $userId,
+                    'tryout_id' => $tryoutId,
+                ],
+                $this->sessionCreateDefaults()
+            );
+        }
+
+        $attemptNumber = (int) TryoutResult::forUserTryout($userId, $tryoutId)->max('attempt_number') + 1;
+
+        return TryoutResult::create(array_merge($this->sessionCreateDefaults(), [
+            'user_id' => $userId,
+            'tryout_id' => $tryoutId,
+            'attempt_number' => max($attemptNumber, 1),
+        ]));
+    }
+
+    private function resolveSessionForStart(int $userId, int $tryoutId): TryoutResult
+    {
+        $activeSession = $this->latestInProgressSession($userId, $tryoutId);
+
+        if ($activeSession) {
+            return $activeSession;
+        }
+
+        return $this->createNewSession($userId, $tryoutId);
+    }
+
+    private function latestCompletedScoresQuery(int $tryoutId)
+    {
+        if (!TryoutResult::hasAttemptNumberColumn() || !TryoutResult::hasStatusColumn()) {
+            return TryoutResult::query()
+                ->where('tryout_id', $tryoutId);
+        }
+
+        $latestCompletedAttempts = TryoutResult::query()
+            ->select('user_id', DB::raw('MAX(attempt_number) as latest_attempt_number'))
+            ->where('tryout_id', $tryoutId)
+            ->where('status', 'completed')
+            ->groupBy('user_id');
+
+        return TryoutResult::query()
+            ->joinSub($latestCompletedAttempts, 'latest_completed_attempts', function ($join) {
+                $join->on('tryout_results.user_id', '=', 'latest_completed_attempts.user_id')
+                    ->on('tryout_results.attempt_number', '=', 'latest_completed_attempts.latest_attempt_number');
+            })
+            ->where('tryout_results.tryout_id', $tryoutId)
+            ->where('tryout_results.status', 'completed');
+    }
+
+    private function resolveRank(int $tryoutId, int $score, int $userId): int
+    {
+        return (clone $this->latestCompletedScoresQuery($tryoutId))
+            ->where(function ($query) use ($score, $userId) {
+                $query
+                    ->where('tryout_results.score', '>', $score)
+                    ->orWhere(function ($innerQuery) use ($score, $userId) {
+                        $innerQuery
+                            ->where('tryout_results.score', $score)
+                            ->where('tryout_results.user_id', '<', $userId);
+                    });
+            })
+            ->count() + 1;
     }
 
     private function sessionStateForResponse(?TryoutResult $session): array

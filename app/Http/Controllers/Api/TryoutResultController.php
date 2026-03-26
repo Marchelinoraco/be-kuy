@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\TryoutRegistration;
 use App\Models\TryoutResult;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class TryoutResultController extends Controller
@@ -19,8 +20,9 @@ class TryoutResultController extends Controller
                 $this->applyTryoutQuestionOrdering($query);
             },
         ])
-            ->where('user_id', $user->id)
-            ->where('tryout_id', $tryoutId)
+            ->forUserTryout($user->id, $tryoutId)
+            ->completed()
+            ->latestAttempt()
             ->first();
 
         if (!$result || !$result->tryout) {
@@ -92,9 +94,7 @@ class TryoutResultController extends Controller
         })->all();
 
         $score = (int) ($result->score ?? 0);
-        $rank = TryoutResult::where('tryout_id', $tryoutId)
-            ->where('score', '>', $score)
-            ->count() + 1;
+        $rank = $this->resolveRank($tryoutId, $score, $user->id);
 
         $finishedAt = $registration?->finished_at;
         $computedTotalScore = $categoryScores['TWK'] + $categoryScores['TIU'] + $categoryScores['TKP'];
@@ -102,16 +102,34 @@ class TryoutResultController extends Controller
             && $categoryScores['TIU'] >= (int) ($tryout->tiu_pg ?? 0)
             && $categoryScores['TKP'] >= (int) ($tryout->tkp_pg ?? 0);
 
+        $attemptHistory = TryoutResult::forUserTryout($user->id, $tryoutId)
+            ->completed()
+            ->latestAttempt()
+            ->get()
+            ->map(function (TryoutResult $attempt) {
+                return [
+                    'id' => $attempt->id,
+                    'attempt_number' => (int) ($attempt->attempt_number ?? 1),
+                    'score' => (int) ($attempt->score ?? 0),
+                    'correct_answer' => (int) ($attempt->correct_answer ?? 0),
+                    'started_at' => optional($attempt->started_at)->toDateTimeString(),
+                    'finished_at' => optional($attempt->finished_at)->toDateTimeString(),
+                ];
+            })
+            ->values()
+            ->all();
+
         return response()->json([
             'status' => true,
             'data' => [
+                'attempt_number' => (int) ($result->attempt_number ?? 1),
                 'score' => $score,
                 'rank' => $rank,
                 'correct_answer' => (int) ($result->correct_answer ?? 0),
                 'answers' => $answers,
                 'session_state' => $this->sessionStateForResponse($result),
                 'started_at' => optional($result->started_at)->toDateTimeString(),
-                'finished_at' => optional($finishedAt)->toDateTimeString(),
+                'finished_at' => optional($result->finished_at ?? $finishedAt)->toDateTimeString(),
                 'tryout' => [
                     'id' => $tryout->id,
                     'title' => $tryout->title,
@@ -132,6 +150,7 @@ class TryoutResultController extends Controller
                     'total_score' => $computedTotalScore,
                     'passed' => $passed,
                 ],
+                'attempt_history' => $attemptHistory,
                 'questions' => $questions,
             ],
         ]);
@@ -142,7 +161,7 @@ class TryoutResultController extends Controller
         $user = $request->user();
 
         $results = TryoutResult::where('user_id', $user->id)
-            ->latest()
+            ->latestAttempt()
             ->get();
 
         return response()->json([
@@ -213,6 +232,42 @@ class TryoutResultController extends Controller
             'visited_question_ids' => [],
             'last_interaction' => null,
         ];
+    }
+
+    private function latestCompletedResultsQuery(int $tryoutId)
+    {
+        if (!TryoutResult::hasAttemptNumberColumn() || !TryoutResult::hasStatusColumn()) {
+            return TryoutResult::query()->where('tryout_id', $tryoutId);
+        }
+
+        $latestCompletedAttempts = TryoutResult::query()
+            ->select('user_id', DB::raw('MAX(attempt_number) as latest_attempt_number'))
+            ->where('tryout_id', $tryoutId)
+            ->where('status', 'completed')
+            ->groupBy('user_id');
+
+        return TryoutResult::query()
+            ->joinSub($latestCompletedAttempts, 'latest_completed_attempts', function ($join) {
+                $join->on('tryout_results.user_id', '=', 'latest_completed_attempts.user_id')
+                    ->on('tryout_results.attempt_number', '=', 'latest_completed_attempts.latest_attempt_number');
+            })
+            ->where('tryout_results.tryout_id', $tryoutId)
+            ->where('tryout_results.status', 'completed');
+    }
+
+    private function resolveRank(int $tryoutId, int $score, int $userId): int
+    {
+        return (clone $this->latestCompletedResultsQuery($tryoutId))
+            ->where(function ($query) use ($score, $userId) {
+                $query
+                    ->where('tryout_results.score', '>', $score)
+                    ->orWhere(function ($innerQuery) use ($score, $userId) {
+                        $innerQuery
+                            ->where('tryout_results.score', $score)
+                            ->where('tryout_results.user_id', '<', $userId);
+                    });
+            })
+            ->count() + 1;
     }
 
     private function applyTryoutQuestionOrdering($query): void

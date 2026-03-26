@@ -89,11 +89,29 @@ class TryoutRegistrationController extends Controller
                     ($tryout->tiu_target ?? 0) +
                     ($tryout->tkp_target ?? 0);
 
-                $result = TryoutResult::where('user_id', $registration->user_id)
-                    ->where('tryout_id', $registration->tryout_id)
+                $latestSession = TryoutResult::forUserTryout($registration->user_id, $registration->tryout_id)
+                    ->latestAttempt()
                     ->first();
 
-                $answeredCount = collect(is_array($result?->answers) ? $result->answers : [])
+                $activeSession = TryoutResult::forUserTryout($registration->user_id, $registration->tryout_id)
+                    ->inProgress()
+                    ->latestAttempt()
+                    ->first();
+
+                $latestCompletedSession = TryoutResult::forUserTryout($registration->user_id, $registration->tryout_id)
+                    ->completed()
+                    ->latestAttempt()
+                    ->first();
+
+                $bestCompletedSession = TryoutResult::forUserTryout($registration->user_id, $registration->tryout_id)
+                    ->completed()
+                    ->orderByDesc('score')
+                    ->orderByDesc('attempt_number')
+                    ->first();
+
+                $progressSource = $activeSession ?? $latestCompletedSession ?? $latestSession;
+
+                $answeredCount = collect(is_array($progressSource?->answers) ? $progressSource->answers : [])
                     ->filter(fn($answer) => $answer !== null && $answer !== '')
                     ->count();
 
@@ -120,10 +138,15 @@ class TryoutRegistrationController extends Controller
                     'isFree' => $tryout->type === 'free',
                     'questionCount' => $questionCount,
                     'progress' => $progress,
-                    'score' => $result?->score,
-                    'correct_answer' => $result?->correct_answer,
+                    'score' => $bestCompletedSession?->score,
+                    'latest_score' => $latestCompletedSession?->score,
+                    'correct_answer' => $latestCompletedSession?->correct_answer,
                     'answered_count' => $answeredCount,
-                    'last_interaction_at' => data_get($result?->session_state, 'last_interaction.at'),
+                    'last_interaction_at' => data_get($progressSource?->session_state, 'last_interaction.at'),
+                    'attempt_count' => TryoutResult::forUserTryout($registration->user_id, $registration->tryout_id)->count(),
+                    'latest_attempt_number' => $latestSession?->attempt_number,
+                    'latest_completed_attempt_number' => $latestCompletedSession?->attempt_number,
+                    'latest_completed_at' => optional($latestCompletedSession?->finished_at)->toDateTimeString(),
                     'tryout' => $tryout,
                 ];
             });
